@@ -1,6 +1,6 @@
 # JoinMarket scripts
 
-Standalone scripts for JoinMarket, strictly no dependencies.
+Standalone scripts for [JoinMarket](https://github.com/JoinMarket-Org/joinmarket-clientserver), strictly no dependencies.
 
 Clone the repo or copy/paste the scripts.
 
