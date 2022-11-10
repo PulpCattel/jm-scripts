@@ -475,7 +475,7 @@ def main() -> None:
                                      f'Outputs: {n_out}\n'
                                      f'Equal value outputs: {equal_outs}\n'
                                      f'Equal output amount: {most_common_value}\n'
-                                     f'Vsize: {vsize}\nf'
+                                     f'Vsize: {vsize}\n'
                                      f'Version: {version}\n'
                                      f'Locktime: {locktime}\n')
                         processed_txs += 1

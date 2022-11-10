@@ -59,7 +59,7 @@ Outputs: 16
 Equal value outputs: 8
 Equal output amount: 31594374
 Vsize: 1729
-fVersion: 2
+Version: 2
 Locktime: 3674210303
 
 11/10/2022 07:48:20 INFO: Processed block 762603.
@@ -78,7 +78,7 @@ Outputs: 7
 Equal value outputs: 4
 Equal output amount: 100262
 Vsize: 628
-fVersion: 1
+Version: 1
 Locktime: 3479639216
 
 11/10/2022 07:48:21 INFO: Processed block 762610.
