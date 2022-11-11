@@ -14,7 +14,7 @@ from enum import Enum
 from json import loads
 from logging import Logger, getLogger, StreamHandler, Formatter
 from os.path import isfile
-from random import random, choices
+from random import random, choices, choice
 from statistics import stdev, mean
 from typing import List, Dict, Any, Tuple
 
@@ -185,7 +185,7 @@ def simulate_order_choose(weights: List[float],
             nick_index = choices(range(len(sim_nicks)), sim_weights, k=1)[0]
         else:
             # Use random_under_max_order_choose
-            nick_index = choices(range(len(sim_nicks)))[0]
+            nick_index = choice(range(len(sim_nicks)))
         chosen_nicks.append(sim_nicks[nick_index])
         sum_weights -= sim_weights.pop(nick_index)
         sim_nicks.pop(nick_index)

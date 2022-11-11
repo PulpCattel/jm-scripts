@@ -19,7 +19,7 @@ usage: jmfinder.py [options] start [end]
 Given a starting and finishing block height, finds JoinMarket CoinJoins.
 
 positional arguments:
-  start                 Start block height
+  start                 Start block height, pass a negative value to scan the last n blocks from end
   end                   End block height, default is the latest block
 
 optional arguments:
@@ -32,7 +32,7 @@ optional arguments:
 ```
 ### Description
 This is a much faster version of [`snicker-finder.py`](https://github.com/JoinMarket-Org/joinmarket-clientserver/blob/master/scripts/snicker/snicker-finder.py) from the JoinMarket repo.
-If you are familiar with it, you can call `jm-finder.py` in the exact same way.
+If you are familiar with it, you can call `jmfinder.py` in the exact same way.
 
 The identifiers saved on disk are in `csv` format, as follows:
 
@@ -49,7 +49,7 @@ Pass `-rest` through CLI or set `rest=1` in `bitcoin.conf`
 
 ### Example
 ```commandline
-python3 jmfinder.py 762603
+python3 jmfinder.py -19
 11/10/2022 07:48:20 INFO: Scanning from block 762603 to block 762621
 11/10/2022 07:48:20 INFO: 
 

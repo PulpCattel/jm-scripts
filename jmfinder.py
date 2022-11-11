@@ -60,9 +60,6 @@ def is_jm(n_in: int, n_out: int, values: List[int]) -> Tuple[int, int]:
     return most_common_value, equal_outs
 
 
-HEADERS = {'User-Agent': 'jmfinder'}
-
-
 def get_logger(verbose: bool) -> Logger:
     logger = getLogger(__name__)
     ch = StreamHandler()
@@ -86,7 +83,7 @@ def get_args() -> Namespace:
         "start",
         action="store",
         type=int,
-        help="Start block height",
+        help="Start block height, pass a negative value to scan the last n blocks from end",
     )
     parser.add_argument(
         "end",
@@ -191,6 +188,8 @@ class Btc:
     Client object to interact with REST server.
     """
 
+    HEADERS = {'User-Agent': 'jmfinder'}
+
     def __init__(self, host: str, port: int, log: Logger):
         self.host = host
         self.port = int(port)
@@ -211,7 +210,7 @@ class Btc:
         """
         while True:
             try:
-                self.conn.request("GET", f'/rest{method.to_uri(req_type, *args)}', headers=HEADERS)
+                self.conn.request("GET", f'/rest{method.to_uri(req_type, *args)}', headers=self.HEADERS)
                 response = self.conn.getresponse()
 
                 if response.status not in [200]:
@@ -347,15 +346,19 @@ def main() -> None:
     with Btc(args.host, args.port, log) as btc:
         log.debug(f'Started HTTP client to {args.host}:{args.port}')
         info = btc.get_info()
+        end_block = args.end if args.end else info['blocks']
+        if args.start < 0:
+            start_block = end_block - abs(args.start) + 1
+        else:
+            start_block = args.start
         if info['pruned']:
-            if args.start < info['pruneheight']:
-                log.error(f"Can't scan past pruned height. Given start height ({args.start}) is lower than "
-                          f"lowest-height complete block stored.")
+            if start_block < info['pruneheight']:
+                log.error(f"Can't scan past pruned height. Given start height ({start_block}) is lower than "
+                          f"lowest-height complete block stored ({info['pruneheight']}).")
                 sys.exit(ExitStatus.ARGERROR.value)
-        endblock = args.end if args.end else info['blocks']
-        log.info(f'Scanning from block {args.start} to block {endblock}')
+        log.info(f'Scanning from block {start_block} to block {end_block}')
         results = []
-        for height in range(args.start, endblock + 1):
+        for height in range(start_block, end_block + 1):
             processed_txs = 0
             blockhash = btc.get_blockhash(height)
             # Get block in raw binary format
@@ -488,11 +491,11 @@ def main() -> None:
                 # Skipping to the next transaction
                 block_offset += size
 
-            log.info(f'Processed block {height}.')
             # Make sure we have parsed all the transactions in the block
             if processed_txs != n_txs:
-                log.error(f'Failed to parse transactions in block at height {height}')
+                log.error(f'Failed to parse {n_txs - processed_txs} transactions in block at height {height}')
                 sys.exit(ExitStatus.FAILURE.value)
+            log.info(f'Processed block {height}.')
 
     log.info('Scan completed')
     with open(args.candidate_file_name, 'w+', encoding='UTF-8') as f:
