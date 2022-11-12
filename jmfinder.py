@@ -8,11 +8,8 @@ The node can be pruned and txindex is not required because jmfinder scans the bl
 Most of the raw data parsing code is taken from https://github.com/alecalve/python-bitcoin-blockchain-parser
 Thank you!
 """
-import errno
 import hashlib
-import http.client
 import json
-import socket
 import struct
 import sys
 from argparse import ArgumentParser, Namespace
@@ -20,7 +17,10 @@ from collections import Counter
 from enum import Enum
 from logging import Logger, getLogger, Formatter, StreamHandler
 from math import ceil
+from time import monotonic
 from typing import Tuple, Dict, Any, List
+from urllib.error import URLError, HTTPError
+from urllib.request import urlopen, Request
 
 DESCRIPTION = """
 Given a starting and finishing block height, finds JoinMarket CoinJoins.
@@ -185,89 +185,43 @@ class RestApi(Enum):
 
 class Btc:
     """
-    Client object to interact with REST server.
+    Client object to interact with REST interface.
     """
 
+    __slots__ = ('url', 'log')
+
     HEADERS = {'User-Agent': 'jmfinder'}
+    TIMEOUT = 3
 
     def __init__(self, host: str, port: int, log: Logger):
-        self.host = host
-        self.port = int(port)
+        self.url = f'http://{host}:{port}'
         self.log = log
-        self.conn = http.client.HTTPConnection(self.host, self.port)
-
-    def __enter__(self) -> 'Btc':
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
-        self.close()
-
-    def _get(self, method: RestApi, req_type: ReqType, *args) -> bytes:
-        """
-        Send HTTP request to the server.
-        If the call succeeds, return raw response in bytes.
-        Else raise.
-        """
-        while True:
-            try:
-                self.conn.request("GET", f'/rest{method.to_uri(req_type, *args)}', headers=self.HEADERS)
-                response = self.conn.getresponse()
-
-                if response.status not in [200]:
-                    self.conn.close()
-                    raise ConnectionError(response.status)
-
-                return response.read()
-
-            except http.client.BadStatusLine:
-                raise TimeoutError('Keepalive')
-            except socket.error as e:
-                if e.errno == errno.ECONNRESET:
-                    self.log.warning('Connection was reset, attempting reconnect.')
-                    self.conn.close()
-                    self.conn.connect()
-                elif e.errno == errno.EPIPE:
-                    self.log.warning('Connection had broken pipe, attempting '
-                                     'reconnect.')
-                    self.conn.close()
-                    self.conn.connect()
-                elif e.errno == errno.EPROTOTYPE:
-                    self.log.warning('Connection had protocol wrong type for socket '
-                                     'error, attempting reconnect.')
-                    self.conn.close()
-                    self.conn.connect()
-                elif e.errno == errno.ECONNREFUSED:
-                    # Will not reattempt in this case
-                    self.log.error("Connection refused.")
-                    self.conn.close()
-                    raise ConnectionRefusedError("Connection refused.")
-                else:
-                    self.log.error(f'Unhandled connection error {str(e)}')
-                    raise e
-            except Exception as exc:
-                raise exc
 
     def get_response(self, method: RestApi, *args, req_type: ReqType = ReqType.JSON) -> bytes:
         """
-        Call REST interface and return raw response.
+        Send HTTP request to the server.
+        If the call succeeds, return raw response in bytes.
+        Else raise ConnectionError.
         """
-        # Query can fail from keepalive timeout; keep retrying if it does, up
-        # to a reasonable limit, then raise. Note that a real failure to connect (e.g.
-        # wrong port) is raised in _get directly.
-        response_received = False
-        for _ in range(100):
-            try:
-                response = self._get(method, req_type, *args)
-            except TimeoutError:
-                # ConnectionError means keepalive timed out, just make a new one
-                self.conn = http.client.HTTPConnection(self.host, self.port)
-            else:
-                response_received = True
-                break
-
-        if not response_received:
-            raise ConnectionError(f"Unable to connect to {self.host}:{self.port}")
-        return response
+        url = f'{self.url}/rest{method.to_uri(req_type, *args)}'
+        request = Request(url, headers=self.HEADERS)
+        try:
+            with urlopen(request, timeout=self.TIMEOUT) as response:
+                return response.read()
+        except HTTPError as exc:
+            self.log.error(f'Bad status code: {exc.code} {exc.reason}')
+        except URLError as exc:
+            self.log.error(f'Unable to connect to {url}: {exc.reason}')
+        except TimeoutError:
+            self.log.error('Request timed out')
+        except Exception as exc:
+            self.log.error(str(exc))
+        self.log.error(f'Request for {url} failed')
+        # Failed to perform HTTP request.
+        # Since this is a standalone script, we are okay stopping the program here.
+        # Ideally this could be improved so that's done somewhere else.
+        # Also some re-try logic could be added in some cases.
+        sys.exit(ExitStatus.FAILURE.value)
 
     def get_json(self, method: RestApi, *args) -> Dict[str, Any]:
         """
@@ -294,10 +248,6 @@ class Btc:
         """
         return self.get_json(RestApi.CHAININFO)
 
-    def close(self) -> None:
-        self.log.debug('Closing HTTP connection')
-        self.conn.close()
-
 
 def double_sha256(data: bytes) -> bytes:
     return hashlib.sha256(hashlib.sha256(data).digest()).digest()
@@ -320,8 +270,6 @@ def decode_uint64(data: bytes) -> int:
 
 
 def decode_varint(data: bytes) -> Tuple[int, int]:
-    if len(data) <= 0:
-        raise ValueError
     size = int(data[0])
     if size > 255:
         raise ValueError
@@ -343,161 +291,161 @@ def decode_varint(data: bytes) -> Tuple[int, int]:
 def main() -> None:
     args = get_args()
     log = get_logger(args.verbose)
-    with Btc(args.host, args.port, log) as btc:
-        log.debug(f'Started HTTP client to {args.host}:{args.port}')
-        info = btc.get_info()
-        end_block = args.end if args.end else info['blocks']
-        if args.start < 0:
-            start_block = end_block - abs(args.start) + 1
-        else:
-            start_block = args.start
-        if info['pruned']:
-            if start_block < info['pruneheight']:
-                log.error(f"Can't scan past pruned height. Given start height ({start_block}) is lower than "
-                          f"lowest-height complete block stored ({info['pruneheight']}).")
-                sys.exit(ExitStatus.ARGERROR.value)
-        log.info(f'Scanning from block {start_block} to block {end_block}')
-        results = []
-        for height in range(start_block, end_block + 1):
-            processed_txs = 0
-            blockhash = btc.get_blockhash(height)
-            # Get block in raw binary format
-            block = btc.get_response(RestApi.BLOCK, blockhash, req_type=ReqType.BIN)
+    btc = Btc(args.host, args.port, log)
+    log.debug(f'Started HTTP client to {btc.url}')
+    info = btc.get_info()
+    end_block = args.end if args.end else info['blocks']
+    if args.start < 0:
+        start_block = end_block - abs(args.start) + 1
+    else:
+        start_block = args.start
+    if info['pruned']:
+        if start_block < info['pruneheight']:
+            log.error(f"Can't scan past pruned height. Given start height ({start_block}) is lower than "
+                      f"lowest-height complete block stored ({info['pruneheight']}).")
+            sys.exit(ExitStatus.ARGERROR.value)
+    log.info(f'Scanning from block {start_block} to block {end_block}')
+    start_time = monotonic()
+    results = []
+    for height in range(start_block, end_block):
+        processed_txs = 0
+        blockhash = btc.get_blockhash(height)
+        # Get block in raw hex format
+        block = btc.get_response(RestApi.BLOCK, blockhash, req_type=ReqType.BIN)
 
-            # Parse block
+        # Parse block
 
-            # Skip the header
-            txs_data = block[80:]
+        # Skip the header
+        txs_data = block[80:]
 
-            # The number of transactions contained in this block
-            n_txs, block_offset = decode_varint(txs_data)
+        # The number of transactions contained in this block
+        n_txs, block_offset = decode_varint(txs_data)
 
-            # Loop through the block's transactions
-            for i in range(n_txs):
-                # Try from 1024 (1KiB) -> 1073741824 (1GiB) slice widths
-                for j in range(0, 20):
-                    try:
-                        # Parse tx
+        # Loop through the block's transactions
+        for i in range(n_txs):
+            # Try from 1024 (1KiB) -> 1073741824 (1GiB) slice widths
+            for j in range(0, 20):
+                try:
+                    # Parse tx
 
-                        offset_e = block_offset + (1024 * 2 ** j)
-                        tx = txs_data[block_offset:offset_e]
-                        # The transaction's version number
-                        version = decode_uint32(tx[:4])
-                        # The transaction's locktime as int
-                        locktime = decode_uint32(tx[-4:])
+                    offset_e = block_offset + (1024 * 2 ** j)
+                    tx = txs_data[block_offset:offset_e]
+                    # The transaction's version number
+                    version = decode_uint32(tx[:4])
+                    # The transaction's locktime as int
+                    locktime = decode_uint32(tx[-4:])
 
-                        is_segwit = False
+                    is_segwit = False
 
-                        tx_offset = 4
+                    tx_offset = 4
 
-                        # Adds basic support for segwit transactions
-                        #   - https://bitcoincore.org/en/segwit_wallet_dev/
-                        #   - https://en.bitcoin.it/wiki/Protocol_documentation#BlockTransactions
-                        if tx[tx_offset:tx_offset + 2] == b'\x00\x01':
-                            is_segwit = True
-                            tx_offset += 2
+                    # Adds basic support for segwit transactions
+                    #   - https://bitcoincore.org/en/segwit_wallet_dev/
+                    #   - https://en.bitcoin.it/wiki/Protocol_documentation#BlockTransactions
+                    if tx[tx_offset:tx_offset + 2] == b'\x00\x01':
+                        is_segwit = True
+                        tx_offset += 2
 
-                        n_in, varint_size = decode_varint(tx[tx_offset:])
-                        tx_offset += varint_size
+                    n_in, varint_size = decode_varint(tx[tx_offset:])
+                    tx_offset += varint_size
 
-                        # Parse inputs
+                    # Parse inputs
 
+                    for _ in range(n_in):
+                        tx_input = tx[tx_offset:]
+                        script_length, varint_length = decode_varint(tx_input[36:])
+                        script_start = 36 + varint_length
+                        in_size = script_start + script_length + 4
+                        tx_offset += in_size
+
+                    n_out, varint_size = decode_varint(tx[tx_offset:])
+                    tx_offset += varint_size
+
+                    # Parse outputs
+
+                    values = []
+                    for _ in range(n_out):
+                        tx_output = tx[tx_offset:]
+                        _value_hex = tx_output[:8]
+                        # The value of the output expressed in sats
+                        values.append(decode_uint64(_value_hex))
+                        script_length, varint_size = decode_varint(tx_output[8:])
+                        script_start = 8 + varint_size
+                        out_size = script_start + script_length
+                        tx_offset += out_size
+
+                    # Parse witnesses
+
+                    if is_segwit:
+                        offset_before_tx_witnesses = tx_offset
                         for _ in range(n_in):
-                            tx_input = tx[tx_offset:]
-                            script_length, varint_length = decode_varint(tx_input[36:])
-                            script_start = 36 + varint_length
-                            in_size = script_start + script_length + 4
-                            tx_offset += in_size
-
-                        n_out, varint_size = decode_varint(tx[tx_offset:])
-                        tx_offset += varint_size
-
-                        # Parse outputs
-
-                        values = []
-                        for _ in range(n_out):
-                            tx_output = tx[tx_offset:]
-                            _value_hex = tx_output[:8]
-                            # The value of the output expressed in sats
-                            values.append(decode_uint64(_value_hex))
-                            script_length, varint_size = decode_varint(tx_output[8:])
-                            script_start = 8 + varint_size
-                            out_size = script_start + script_length
-                            tx_offset += out_size
-
-                        # Parse witnesses
-
-                        if is_segwit:
-                            offset_before_tx_witnesses = tx_offset
-                            for _ in range(n_in):
-                                tx_witnesses_n, varint_size = decode_varint(tx[tx_offset:])
+                            tx_witnesses_n, varint_size = decode_varint(tx[tx_offset:])
+                            tx_offset += varint_size
+                            for _ in range(tx_witnesses_n):
+                                component_length, varint_size = decode_varint(tx[tx_offset:])
                                 tx_offset += varint_size
-                                for _ in range(tx_witnesses_n):
-                                    component_length, varint_size = decode_varint(
-                                        tx[tx_offset:])
-                                    tx_offset += varint_size
-                                    tx_offset += component_length
+                                tx_offset += component_length
 
-                        size = tx_offset + 4
-                        tx = tx[:size]
-                        if size != len(tx):
-                            raise ValueError("Incomplete transaction")
+                    size = tx_offset + 4
+                    tx = tx[:size]
+                    if size != len(tx):
+                        raise ValueError("Incomplete transaction")
 
-                        # Segwit transactions have two transaction ids/hashes, txid and wtxid
-                        # txid is a hash of all of the legacy transaction fields only
-                        if is_segwit:
-                            txid_data = tx[:4] + tx[6:offset_before_tx_witnesses] + tx[-4:]
-                        else:
-                            txid_data = tx
-                        txid = format_hash(double_sha256(txid_data))
+                    # Segwit transactions have two transaction ids/hashes, txid and wtxid
+                    # txid is a hash of all of the legacy transaction fields only
+                    if is_segwit:
+                        txid_data = tx[:4] + tx[6:offset_before_tx_witnesses] + tx[-4:]
+                    else:
+                        txid_data = tx
+                    txid = format_hash(double_sha256(txid_data))
 
-                        # The transaction size in virtual bytes.
-                        if not is_segwit:
-                            vsize = size
-                        else:
-                            # The witness is the last element in a transaction before the
-                            # 4 byte locktime and self._offset_before_tx_witnesses is the
-                            # position where the witness starts
-                            witness_size = size - offset_before_tx_witnesses - 4
+                    # The transaction size in virtual bytes.
+                    if not is_segwit:
+                        vsize = size
+                    else:
+                        # The witness is the last element in a transaction before the
+                        # 4 byte locktime and self._offset_before_tx_witnesses is the
+                        # position where the witness starts
+                        witness_size = size - offset_before_tx_witnesses - 4
 
-                            # sSze of the transaction without the segwit marker (2 bytes) and
-                            # the witness
-                            stripped_size = size - (2 + witness_size)
-                            weight = stripped_size * 3 + size
+                        # sSze of the transaction without the segwit marker (2 bytes) and
+                        # the witness
+                        stripped_size = size - (2 + witness_size)
+                        weight = stripped_size * 3 + size
 
-                            # Vsize is weight / 4 rounded up
-                            vsize = ceil(weight / 4)
+                        # Vsize is weight / 4 rounded up
+                        vsize = ceil(weight / 4)
 
-                        # Check for JoinMarket pattern
-                        most_common_value, equal_outs = is_jm(n_in, n_out, values)
-                        if most_common_value > 0:
-                            results.append(f'{txid},{height},{i}')
-                            log.info(f'\n\nFound possible JoinMarket CoinJoin at height {height}\n'
-                                     f'TXID: {txid}\n'
-                                     f'Inputs: {n_in}\n'
-                                     f'Outputs: {n_out}\n'
-                                     f'Equal value outputs: {equal_outs}\n'
-                                     f'Equal output amount: {most_common_value}\n'
-                                     f'Vsize: {vsize}\n'
-                                     f'Version: {version}\n'
-                                     f'Locktime: {locktime}\n')
-                        processed_txs += 1
-                        break
+                    # Check for JoinMarket pattern
+                    most_common_value, equal_outs = is_jm(n_in, n_out, values)
+                    if most_common_value > 0:
+                        results.append(f'{txid},{height},{i}')
+                        log.info(f'\n\nFound possible JoinMarket CoinJoin at height {height}\n'
+                                 f'TXID: {txid}\n'
+                                 f'Inputs: {n_in}\n'
+                                 f'Outputs: {n_out}\n'
+                                 f'Equal value outputs: {equal_outs}\n'
+                                 f'Equal output amount: {most_common_value}\n'
+                                 f'Vsize: {vsize}\n'
+                                 f'Version: {version}\n'
+                                 f'Locktime: {locktime}\n')
+                    processed_txs += 1
+                    break
 
-                    except Exception as exc:
-                        # raise exc
-                        continue
+                except Exception as exc:
+                    # raise exc
+                    continue
 
-                # Skipping to the next transaction
-                block_offset += size
+            # Skipping to the next transaction
+            block_offset += size
 
-            # Make sure we have parsed all the transactions in the block
-            if processed_txs != n_txs:
-                log.error(f'Failed to parse {n_txs - processed_txs} transactions in block at height {height}')
-                sys.exit(ExitStatus.FAILURE.value)
-            log.info(f'Processed block {height}.')
+        # Make sure we have parsed all the transactions in the block
+        if processed_txs != n_txs:
+            log.error(f'Failed to parse {n_txs - processed_txs} transactions in block at height {height}')
+            sys.exit(ExitStatus.FAILURE.value)
+        log.info(f'Processed block {height}.')
 
-    log.info('Scan completed')
+    log.info(f'Scan completed in {monotonic() - start_time:.2f}s')
     with open(args.candidate_file_name, 'w+', encoding='UTF-8') as f:
         lines = f.readlines() + results
         result = sorted(set(lines), key=lines.index)

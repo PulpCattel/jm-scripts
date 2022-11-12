@@ -94,7 +94,7 @@ Locktime: 3479639216
 11/10/2022 07:48:21 INFO: Processed block 762619.
 11/10/2022 07:48:21 INFO: Processed block 762620.
 11/10/2022 07:48:22 INFO: Processed block 762621.
-11/10/2022 07:48:22 INFO: Scan completed
+11/10/2022 07:48:22 INFO: Scan completed in 1.22s
 ```
 
 ---
@@ -149,6 +149,7 @@ python3 jmsim.py orderbook.json -f 1000,0.4 -a 120000
 11/11/2022 01:09:30 INFO: Removing duplicates
 11/11/2022 01:09:30 INFO: Removed 0 offers
 11/11/2022 01:09:30 INFO: Running simulation for 10 trials (12700 CoinJoin each)...
+11/11/2022 01:09:35 INFO: Simulation completed in 5.64s
 11/11/2022 01:09:35 INFO: Estimated picking chance (95% confidence):
 NICK (BOND VALUE)
 

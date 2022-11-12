@@ -14,8 +14,9 @@ from enum import Enum
 from json import loads
 from logging import Logger, getLogger, StreamHandler, Formatter
 from os.path import isfile
-from random import random, choices, choice
+from random import random, choices, randrange
 from statistics import stdev, mean
+from time import monotonic
 from typing import List, Dict, Any, Tuple
 
 DESCRIPTION = """
@@ -185,7 +186,7 @@ def simulate_order_choose(weights: List[float],
             nick_index = choices(range(len(sim_nicks)), sim_weights, k=1)[0]
         else:
             # Use random_under_max_order_choose
-            nick_index = choice(range(len(sim_nicks)))
+            nick_index = randrange(len(sim_nicks))
         chosen_nicks.append(sim_nicks[nick_index])
         sum_weights -= sim_weights.pop(nick_index)
         sim_nicks.pop(nick_index)
@@ -242,8 +243,10 @@ def main() -> None:
         sys.exit(ExitStatus.ARGERROR.value)
     sample_size = n_offers * 100 if args.sample_size is None else args.sample_size
     log.info(f"Running simulation for {args.trials} trials ({sample_size} CoinJoin each)...")
+    start_time = monotonic()
     res = simulate(values, nicks, args.trials, sample_size, args.maker_count, args.bondless_allowance)
-    log.info("Estimated picking chance (95% confidence):")
+    log.info(f'Simulation completed in {monotonic() - start_time:.2f}s')
+    log.info("Estimated picking chances (95% confidence):")
     sorted_orders = dict(sorted(offers.items(), key=lambda x: x[1]['fidelity_bond_value'], reverse=True))
     print('NICK (BOND VALUE)\n')
     for nick in sorted_orders:
