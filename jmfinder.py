@@ -201,7 +201,7 @@ class Btc:
         """
         Send HTTP request to the server.
         If the call succeeds, return raw response in bytes.
-        Else raise ConnectionError.
+        Else log error and terminate the script, the "rationale" for this is below.
         """
         url = f'{self.url}/rest{method.to_uri(req_type, *args)}'
         request = Request(url, headers=self.HEADERS)
