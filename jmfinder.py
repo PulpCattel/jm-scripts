@@ -307,7 +307,7 @@ def main() -> None:
     log.info(f'Scanning from block {start_block} to block {end_block}')
     start_time = monotonic()
     results = []
-    for height in range(start_block, end_block):
+    for height in range(start_block, end_block + 1):
         processed_txs = 0
         blockhash = btc.get_blockhash(height)
         # Get block in raw hex format
