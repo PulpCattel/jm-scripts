@@ -12,8 +12,9 @@ Usage examples are below.
 * [`jmsim.py`](#jmsim)
 
 ## jmfinder
-```sh
-python3 jmfinder.py -h
+
+```console
+$ python3 jmfinder.py -h
 usage: jmfinder.py [options] start [end]
 
 Given a starting and finishing block height, finds JoinMarket CoinJoins.
@@ -30,7 +31,9 @@ optional arguments:
                         Filename to write identifiers of candidate transactions, default candidates.txt
   -v, --verbose         Increase logging verbosity to DEBUG
 ```
+
 ### Description
+
 This is a much faster version of [`snicker-finder.py`](https://github.com/JoinMarket-Org/joinmarket-clientserver/blob/master/scripts/snicker/snicker-finder.py) from the JoinMarket repo.
 If you are familiar with it, you can call `jmfinder.py` in the exact same way.
 
@@ -44,12 +47,14 @@ Where:
 * `index` is the position of the transaction in the block. Index 0 means the first transaction in the block.
 
 ### Requirements
+
 The only requirement is a Bitcoin Core node running with [REST interface](https://github.com/bitcoin/bitcoin/blob/master/doc/REST-interface.md) enabled.
 Pass `-rest` through CLI or set `rest=1` in `bitcoin.conf`
 
 ### Example
-```commandline
-python3 jmfinder.py -19
+
+```console
+$ python3 jmfinder.py -19
 11/10/2022 07:48:20 INFO: Scanning from block 762603 to block 762621
 11/10/2022 07:48:20 INFO: 
 
@@ -100,8 +105,9 @@ Locktime: 3479639216
 ---
 
 ## jmsim
-```commandline
-python3 jmsim.py -h
+
+```console
+$ python3 jmsim.py -h
 usage: jmsim.py [options] orderbook
 
 Given an orderbook file as JSON, e.g., exported from ob-watcher.py, run multiple simulations to estimate the picking chances of each fidelity bond.
@@ -126,7 +132,9 @@ optional arguments:
                         e.g., 1000,0.002 (default does not filter)
   -v, --verbose         Increase logging verbosity to DEBUG
 ```
+
 ### Description
+
 This is a simple script to run simulations against a given JoinMarket orderbook.
 It emulates the JoinMarket order choosing algorithm to find out how often each maker offer gets selected by a taker.
 
@@ -140,8 +148,8 @@ To get that:
 None.
 
 ### Example
-```commandline
-python3 jmsim.py orderbook.json -f 1000,0.4 -a 120000
+```console
+$ python3 jmsim.py orderbook.json -f 1000,0.4 -a 120000
 11/11/2022 01:09:30 INFO: Filtering by CoinJoin amount
 11/11/2022 01:09:30 INFO: Filtered 49 offers
 11/11/2022 01:09:30 INFO: Filtering by max fee
@@ -184,8 +192,9 @@ J5C42iJ8gvvVUKqq (0.0000000000000000): 1.052% +/- 0.178%
 J5BjH1zdiRWnE45t (0.0000000000000000): 0.980% +/- 0.106%
 J5Ee8uoQVCsxHSj2 (0.0000000000000000): 1.029% +/- 0.178%
 J535PB6RKE3CF3Dz (0.0000000000000000): 1.012% +/- 0.220%
-[-SNIPPED-]
+[...]
 ```
+
 ---
 
 Enjoy!

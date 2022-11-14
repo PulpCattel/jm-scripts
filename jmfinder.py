@@ -323,6 +323,7 @@ def main() -> None:
 
         # Loop through the block's transactions
         for i in range(n_txs):
+            tx_size = 0
             # Try from 1024 (1KiB) -> 1073741824 (1GiB) slice widths
             for j in range(0, 20):
                 try:
@@ -386,9 +387,9 @@ def main() -> None:
                                 tx_offset += varint_size
                                 tx_offset += component_length
 
-                    size = tx_offset + 4
-                    tx = tx[:size]
-                    if size != len(tx):
+                    tx_size = tx_offset + 4
+                    tx = tx[:tx_size]
+                    if tx_size != len(tx):
                         raise ValueError("Incomplete transaction")
 
                     # Segwit transactions have two transaction ids/hashes, txid and wtxid
@@ -401,17 +402,17 @@ def main() -> None:
 
                     # The transaction size in virtual bytes.
                     if not is_segwit:
-                        vsize = size
+                        vsize = tx_size
                     else:
                         # The witness is the last element in a transaction before the
                         # 4 byte locktime and self._offset_before_tx_witnesses is the
                         # position where the witness starts
-                        witness_size = size - offset_before_tx_witnesses - 4
+                        witness_size = tx_size - offset_before_tx_witnesses - 4
 
                         # sSze of the transaction without the segwit marker (2 bytes) and
                         # the witness
-                        stripped_size = size - (2 + witness_size)
-                        weight = stripped_size * 3 + size
+                        stripped_size = tx_size - (2 + witness_size)
+                        weight = stripped_size * 3 + tx_size
 
                         # Vsize is weight / 4 rounded up
                         vsize = ceil(weight / 4)
@@ -437,7 +438,7 @@ def main() -> None:
                     continue
 
             # Skipping to the next transaction
-            block_offset += size
+            block_offset += tx_size
 
         # Make sure we have parsed all the transactions in the block
         if processed_txs != n_txs:
@@ -446,9 +447,14 @@ def main() -> None:
         log.info(f'Processed block {height}.')
 
     log.info(f'Scan completed in {monotonic() - start_time:.2f}s')
-    with open(args.candidate_file_name, 'w+', encoding='UTF-8') as f:
-        lines = f.readlines() + results
-        result = sorted(set(lines), key=lines.index)
+    with open(args.candidate_file_name, 'a+', encoding='UTF-8') as f:
+        # Go to the beginning of the file
+        f.seek(0)
+        lines = [line.strip() for line in f.readlines()] + results
+        # Remove duplicates and sort by block height
+        result = sorted(set(lines), key=lambda x: x.split(',')[1])
+        # Clear the old content
+        f.truncate(0)
         f.writelines('\n'.join(result))
 
 
