@@ -310,7 +310,7 @@ def main() -> None:
     for height in range(start_block, end_block + 1):
         processed_txs = 0
         blockhash = btc.get_blockhash(height)
-        # Get block in raw hex format
+        # Get block in binary format
         block = btc.get_response(RestApi.BLOCK, blockhash, req_type=ReqType.BIN)
 
         # Parse block

@@ -110,7 +110,7 @@ Locktime: 3479639216
 $ python3 jmsim.py -h
 usage: jmsim.py [options] orderbook
 
-Given an orderbook file as JSON, e.g., exported from ob-watcher.py, run multiple simulations to estimate the picking chances of each fidelity bond.
+Given an orderbook file as JSON, e.g., exported from ob-watcher.py, run multiple CoinJoin simulations to estimate the picking chances of each maker offer.
 
 positional arguments:
   orderbook             Path to the exported orderbook in JSON format
@@ -135,7 +135,7 @@ optional arguments:
 
 ### Description
 
-This is a simple script to run simulations against a given JoinMarket orderbook.
+This is a simple script to run CoinJoin simulations against a given JoinMarket orderbook.
 It emulates the JoinMarket order choosing algorithm to find out how often each maker offer gets selected by a taker.
 
 The only thing you need is an orderbook file in JSON format.

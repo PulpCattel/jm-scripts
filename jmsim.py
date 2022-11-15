@@ -21,7 +21,7 @@ from typing import List, Dict, Any, Tuple
 
 DESCRIPTION = """
 Given an orderbook file as JSON, e.g., exported from ob-watcher.py, run 
-multiple simulations to estimate the picking chances of each fidelity bond.
+multiple simulations to estimate the picking chances of each maker offer.
 """
 
 # Same as JoinMarket default
