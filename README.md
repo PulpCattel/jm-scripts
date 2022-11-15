@@ -29,6 +29,7 @@ optional arguments:
   -p PORT, --port PORT  Bitcoin Core REST port, default 8332
   -f CANDIDATE_FILE_NAME, --filename CANDIDATE_FILE_NAME
                         Filename to write identifiers of candidate transactions, default candidates.txt
+  -j N, --jobs N        Use N processes, default to the number of processors on the machine. Pass 0 to prevent multiprocessing
   -v, --verbose         Increase logging verbosity to DEBUG
 ```
 
@@ -99,7 +100,7 @@ Locktime: 3479639216
 11/10/2022 07:48:21 INFO: Processed block 762619.
 11/10/2022 07:48:21 INFO: Processed block 762620.
 11/10/2022 07:48:22 INFO: Processed block 762621.
-11/10/2022 07:48:22 INFO: Scan completed in 1.22s
+11/10/2022 07:48:22 INFO: Scan completed in 0.80s
 ```
 
 ---

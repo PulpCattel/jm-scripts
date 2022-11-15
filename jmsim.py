@@ -17,7 +17,9 @@ from os.path import isfile
 from random import random, choices, randrange
 from statistics import stdev, mean
 from time import monotonic
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
+
+log: Optional[Logger] = None
 
 DESCRIPTION = """
 Given an orderbook file as JSON, e.g., exported from ob-watcher.py, run 
@@ -215,6 +217,7 @@ def simulate(weights: List[float], nicks: List[str], trials: int, sample_size: i
 
 def main() -> None:
     args = get_args()
+    global log
     log = get_logger(args.verbose)
     offers = args.orderbook["offers"]
     if args.amount is not None:
@@ -258,4 +261,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        log.info('Shutting down')
