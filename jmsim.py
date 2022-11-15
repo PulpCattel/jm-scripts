@@ -170,7 +170,7 @@ def filter_ob_by_fees(offers: List[Dict[str, Any]], max_abs: int, max_rel: float
 def simulate_order_choose(weights: List[float],
                           nicks: List[str],
                           maker_count: int,
-                          bondless: float) -> list[str]:
+                          bondless: float) -> List[str]:
     """
     Return list with the nicks of the selected offers.
     The order choosing algos are intended to be exactly the same as the JoinMarket ones.
