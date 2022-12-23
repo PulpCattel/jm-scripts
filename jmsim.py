@@ -7,6 +7,7 @@ To get that:
     * Find a public orderbook you trust and export it from there.
     * For testing, you can build the JSON file yourself, ideally a script should be made to make it trivial.
 """
+from concurrent.futures import ProcessPoolExecutor
 import sys
 from argparse import ArgumentParser, Namespace, ArgumentTypeError
 from decimal import Decimal
@@ -22,7 +23,7 @@ from typing import List, Dict, Any, Tuple, Optional
 log: Optional[Logger] = None
 
 DESCRIPTION = """
-Given an orderbook file as JSON, e.g., exported from ob-watcher.py, run 
+Given an orderbook file as JSON, e.g., exported from ob-watcher.py, run
 multiple simulations to estimate the picking chances of each maker offer.
 """
 
@@ -109,8 +110,7 @@ def get_args() -> Namespace:
         action="store",
         type=int,
         dest="sample_size",
-        help="Number of CoinJoin simulations for each trial, default 100 times the number of (filtered) offers in the "
-             "orderbook",
+        help="Number of CoinJoin simulations for each trial, default 100 times the number of (filtered) offers in the orderbook",
     )
     parser.add_argument(
         "-b",
@@ -139,6 +139,13 @@ def get_args() -> Namespace:
         help="Filter the orderbook based on maximum fees asked (naively, does not take into account the CoinJoin "
              "amount). Specify both absolute and relative fees comma separated, e.g., 1000,0.002 (default does not "
              "filter)",
+    )
+    parser.add_argument(
+        '-j',
+        '--jobs',
+        type=int,
+        help='Use N processes, default to the number of processors on the machine. Pass 0 to prevent multiprocessing',
+        metavar='N',
     )
     parser.add_argument(
         '-v',
@@ -178,40 +185,51 @@ def simulate_order_choose(weights: List[float],
     The order choosing algos are intended to be exactly the same as the JoinMarket ones.
     """
     chosen_nicks = []
-    sum_weights = sum(weights)
     # Makes copies to keep the original intact
     sim_weights = weights[:]
     sim_nicks = nicks[:]
     for _ in range(maker_count):
-        if random() >= bondless and sum_weights != 0:
+        if random() >= bondless and sum(sim_weights) > 0:
             # Use fidelity_bond_weighted_order_choose
             nick_index = choices(range(len(sim_nicks)), sim_weights, k=1)[0]
         else:
             # Use random_under_max_order_choose
             nick_index = randrange(len(sim_nicks))
         chosen_nicks.append(sim_nicks[nick_index])
-        sum_weights -= sim_weights.pop(nick_index)
+        sim_weights.pop(nick_index)
         sim_nicks.pop(nick_index)
 
     return chosen_nicks
 
 
+def trial(args: Tuple) -> Dict[str, int]:
+    trial_res = {nick: 0 for nick in args[0]}
+    for _ in range(args[1]):
+        chosen_nicks = simulate_order_choose(
+            args[2], args[0], args[3], args[4])
+        for nick in chosen_nicks:
+            trial_res[nick] += 1
+    return trial_res
+
+
 def simulate(weights: List[float], nicks: List[str], trials: int, sample_size: int, maker_count: int,
-             bondless: float) -> Dict[str, List[float]]:
+             bondless: float, jobs: Optional[int] = None) -> Dict[str, List[float]]:
     """
     Simulate `sample_size` CoinJoins for `trials` times.
     Return a dict with key being the nick and value its corresponding results, one for trial.
     Each result represents times_picked / sample_size.
     """
-    res: Dict[str, List[float]] = {nick: [] for nick in nicks}
-    for _ in range(trials):
-        trial_res = {nick: 0 for nick in nicks}
-        for _ in range(sample_size):
-            chosen_nicks = simulate_order_choose(weights, nicks, maker_count, bondless)
-            for nick in chosen_nicks:
-                trial_res[nick] += 1
-        for nick in nicks:
-            res[nick].append(trial_res[nick] / sample_size)
+
+    args = ((nicks, sample_size, weights, maker_count, bondless) for _ in range(trials))
+    if jobs == 0:
+        # Synchronous, do not use ProcessPoolExecutor
+        trials_res = list(map(trial, args))
+    else:
+        # Asynchronous using a pool of args.jobs processes
+        # If args.jobs is None, uses all available processors
+        with ProcessPoolExecutor(jobs) as executor:
+            trials_res = list(executor.map(trial, args))
+    res = {nick: [trial_[nick] / sample_size for trial_ in trials_res] for nick in nicks}
     return res
 
 
@@ -247,7 +265,7 @@ def main() -> None:
     sample_size = n_offers * 100 if args.sample_size is None else args.sample_size
     log.info(f"Running simulation for {args.trials} trials ({sample_size} CoinJoin each)...")
     start_time = monotonic()
-    res = simulate(values, nicks, args.trials, sample_size, args.maker_count, args.bondless_allowance)
+    res = simulate(values, nicks, args.trials, sample_size, args.maker_count, args.bondless_allowance, args.jobs)
     log.info(f'Simulation completed in {monotonic() - start_time:.2f}s')
     log.info("Estimated picking chances (95% confidence):")
     sorted_orders = dict(sorted(offers.items(), key=lambda x: x[1]['fidelity_bond_value'], reverse=True))
@@ -256,8 +274,7 @@ def main() -> None:
         mean_res = mean(res[nick])
         stdev_res = stdev(res[nick]) * 1.96
         bond_value = float(Decimal(offers[nick]["fidelity_bond_value"]) / Decimal(1e16))
-        print(
-            f'{offers[nick]["counterparty"]} ({bond_value:.16f}): {mean_res:.3%} +/- {stdev_res:.3%}')
+        print(f'{offers[nick]["counterparty"]} ({bond_value:.16f}): {mean_res:.3%} +/- {stdev_res:.3%}')
 
 
 if __name__ == "__main__":
